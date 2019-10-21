@@ -1,0 +1,100 @@
+FROM ubuntu:19.04
+
+LABEL description="Basic marian-nmb docker container for Ubuntu" author="Michael Conrad <muksihs@gmail.com>" maintainer="Michael Conrad <muksihs@gmail.com>"
+
+# Update Ubuntu.
+RUN apt-get update
+RUN apt-get install -y apt-utils debconf-utils
+RUN apt-get upgrade -y
+RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
+
+#set the locale otherwise weird issues later, especially with git and gradle
+RUN apt-get install -y language-pack-en language-pack-en-base
+RUN locale-gen en_US.UTF-8
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+#timezone to match mine to prevent confusion in log files
+RUN apt-get install -y tzdata
+RUN ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime
+RUN dpkg-reconfigure -f noninteractive tzdata
+
+RUN apt-get install -y software-properties-common
+
+# Install some necessary tools.
+RUN apt-get install -y sudo vim vifm
+RUN apt-get install -y perl
+
+# Install dependencies.
+RUN apt-get install -y build-essential pkg-config automake libtool cmake
+RUN apt-get install -y git
+RUN apt-get install -y libboost-all-dev
+RUN apt-get install -y libprotobuf\*
+RUN apt-get install -y protobuf-compiler
+RUN apt-get install -y libprotobuf-dev
+RUN apt-get install -y openssl libssl-dev
+RUN apt-get install -y libgoogle-perftools-dev
+RUN apt-get install -y zlib1g-dev
+RUN apt-get install -y python-dev
+RUN apt-get install -y libbz2-dev
+RUN apt-get install -y wget
+
+RUN apt-get install -y libopenblas-dev
+
+RUN wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
+RUN apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
+RUN rm GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
+RUN wget https://apt.repos.intel.com/setup/intelproducts.list -O /etc/apt/sources.list.d/intelproducts.list
+RUN apt-get update
+RUN apt-get install -y intel-mkl-64bit-2019.5-075
+
+RUN add-apt-repository -y ppa:cwchien/gradle
+RUN apt-get update
+RUN apt-get install -y openjdk-8-jdk-headless
+RUN apt-get install -y gradle
+
+WORKDIR /git
+
+#Marian NMT
+RUN git clone https://github.com/marian-nmt/marian-dev.git marian
+WORKDIR /git/marian
+RUN mkdir build
+WORKDIR /git/marian/build
+RUN cmake .. -DCOMPILE_CPU=on -DUSE_SENTENCEPIECE=on -DCOMPILE_CUDA=off -DBUILD_ARCH=native
+RUN make -j 16
+
+#
+#misc tools for use by marian-nmt
+#
+
+#Fast Aligner for use to improve training
+RUN apt-get install -y libgoogle-perftools-dev libsparsehash-dev
+WORKDIR /git
+RUN git clone https://github.com/clab/fast_align.git
+WORKDIR /git/fast_align/build
+RUN cmake ..
+RUN make -j 16
+
+#moses-scripts:
+RUN	git clone https://github.com/marian-nmt/moses-scripts
+#subword-nmt:
+RUN	git clone https://github.com/rsennrich/subword-nmt
+#sacreBLEU:
+RUN	git clone https://github.com/marian-nmt/sacreBLEU -b master
+
+ARG CherokeeLemmatizerVersion="20191011.00"
+WORKDIR /git
+RUN git clone https://github.com/CherokeeLanguage/CherokeeLemmatizer.git
+WORKDIR /git/CherokeeLemmatizer
+RUN ./gradlew clean build fatjar
+RUN cp -v build/libs/CherokeeLemmatizer.jar /usr/bin/
+
+#Marian work user
+RUN useradd -m -u 1000 -G sudo marian
+RUN usermod --password $(openssl passwd -1 marian) marian
+RUN echo 'export LANG=en_US.UTF-8' >> /home/marian/.profile
+RUN echo 'export LC_ALL=en_US.UTF-8' >> /home/marian/.profile
+
+WORKDIR /home/marian
+CMD ["/bin/bash", "--login"]
