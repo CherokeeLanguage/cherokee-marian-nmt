@@ -1,0 +1,8 @@
+en-chr/*-model.*/
+en-chr/*-temp.*/
+en-chr/*-work.*/
+*.tar.gz
+en-chr/work.*/
+en-chr/temp.*/
+en-chr/model.*/
+en-chr/mono.src/minibatch-corpus-sentencepiece.*

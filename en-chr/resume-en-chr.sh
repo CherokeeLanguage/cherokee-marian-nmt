@@ -44,8 +44,8 @@ for e in $(seq 1 1 1000); do
     # train nmt model
 nice $MARIAN/build/marian \
     --after-epochs $e \
-    --mini-batch 8 \
-    --maxi-batch 24 \
+    --mini-batch 16 \
+    --maxi-batch 64 \
     --cpu-threads 16 \
     --allow-unk \
     --no-restore-corpus \
@@ -72,37 +72,41 @@ nice $MARIAN/build/marian \
     # some simple tests
     echo "A man and a woman are walking." \
     | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 8 --maxi-batch 24 --maxi-batch-sort src > "$WORKDIR/man-woman.$L2".output
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/man-woman.$L2".output
 
     echo "The men and women are walking." \
     | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 8 --maxi-batch 24 --maxi-batch-sort src > "$WORKDIR/men-women.$L2".output
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/men-women.$L2".output
+
+    echo "The fox will be eating the chicken tomorrow." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-will-be-eating.$L2".output
 
     echo "The fox will eat the chicken." \
     | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 8 --maxi-batch 24 --maxi-batch-sort src > "$WORKDIR/fox-chicken-will-eat.$L2".output
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-will-eat.$L2".output
 
     echo "The fox is eating the chicken." \
     | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 8 --maxi-batch 24 --maxi-batch-sort src > "$WORKDIR/fox-chicken-eating.$L2".output
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-eating.$L2".output
 
     echo "The fox ate the chicken." \
     | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 8 --maxi-batch 24 --maxi-batch-sort src > "$WORKDIR/fox-chicken-ate.$L2".output
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-ate.$L2".output
 
     echo "The fox did eat the chicken." \
     | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 8 --maxi-batch 24 --maxi-batch-sort src > "$WORKDIR/fox-chicken-did-eat.$L2".output      
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-did-eat.$L2".output      
 
 done
 
  # translate dev set
 cat "$DEVCORPUS.$L1" \
     | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 8 --maxi-batch 24 --maxi-batch-sort src > "$DEVCORPUS.$L2".output
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$DEVCORPUS.$L2".output
 
     # translate test set
 cat "$TESTCORPUS.$L1" \
     | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 8 --maxi-batch 24 --maxi-batch-sort src > "$TESTCORPUS.$L2".output
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$TESTCORPUS.$L2".output
 

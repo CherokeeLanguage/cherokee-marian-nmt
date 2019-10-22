@@ -123,8 +123,8 @@ sed -i 's/\t/ ||| /g' $TEMPDIR/align.temp.$L1-$L2
 
 # train nmt model
 nice $MARIAN/build/marian \
-    --mini-batch 8 \
-    --maxi-batch 24 \
+    --mini-batch 16 \
+    --maxi-batch 64 \
     --cpu-threads 16 \
     --after-epochs 1 --allow-unk \
     --no-restore-corpus \
@@ -149,20 +149,42 @@ nice $MARIAN/build/marian \
     --valid-translation-output "$TEMPDIR/validation-translation-output.txt"
     # --overwrite
 
+# some simple tests
+    echo "A man and a woman are walking." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/man-woman.$L2".output
+
+    echo "The men and women are walking." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/men-women.$L2".output
+
+    echo "The fox will be eating the chicken tomorrow." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-will-be-eating.$L2".output
+
+    echo "The fox will eat the chicken." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-will-eat.$L2".output
+
+    echo "The fox is eating the chicken." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-eating.$L2".output
+
+    echo "The fox ate the chicken." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-ate.$L2".output
+
+    echo "The fox did eat the chicken." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-did-eat.$L2".output      
+
+
 # translate dev set
-cat "$CORPUSDEV.$L1" \
-    | $MARIAN/build/marian-decoder -c model/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 64 --maxi-batch 100 --maxi-batch-sort src > "$CORPUSDEV.$L2".output
+cat "$DEVCORPUS.$L1" \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$DEVCORPUS.$L2".output
 
-# translate test set
-cat "$CORPUSTEST.$L1" \
-    | $MARIAN/build/marian-decoder -c model/model.npz.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 64 --maxi-batch 100 --maxi-batch-sort src > "$CORPUSTEST.$L2".output
-
-# get marian-nmt fork of sacrebleu
-#cd /git
-#git clone https://github.com/marian-nmt/sacreBLEU.git sacreBLEU
-
-# calculate bleu scores on dev and test set
-#/git/sacreBLEU/sacrebleu.py -t wmt16/dev -l $L1-$L2 < data/newsdev2016.$L2.output
-#/git/sacreBLEU/sacrebleu.py -t wmt16 -l $L1-$L2 < data/newstest2016.$L2.output
+    # translate test set
+cat "$TESTCORPUS.$L1" \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$TESTCORPUS.$L2".output
