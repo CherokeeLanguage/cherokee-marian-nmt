@@ -6,6 +6,8 @@ set -o pipefail
 cd "$(dirname "$0")"
 cwd="$(pwd)"
 
+LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libclBLAS.so"
+
 MARIAN=/git/marian
 
 export PATH="$PATH:$MARIAN/build/"
@@ -53,8 +55,34 @@ for x in "$CORPUS_SRC/"*.$L1; do
     cat "$y" | sed '/^\s*$/d' >> "$CORPUS".$L2
 done
 
-#(re)generate corpus
-bash "$cwd/rebuild-corpus-en.sh"
+# create a random dev set
+cp /dev/null "$DEVCORPUS.$L1-$L2"
+cp /dev/null "$DEVCORPUS.$L1"
+cp /dev/null "$DEVCORPUS.$L2"
+
+paste "$CORPUS_SRC"/corpus-nt-bbe.$L1 "$CORPUS_SRC"/corpus-nt-bbe.$L2 | sort -u | shuf > "$WORKDIR/tmp1.$L1-$L2"
+sed -i '/^\s*$/d' "$WORKDIR/tmp1.$L1-$L2"
+head -n 50 "$WORKDIR/tmp1.$L1-$L2" > "$DEVCORPUS.$L1-$L2"
+rm "$WORKDIR/tmp1.$L1-$L2"
+
+cut -f 1 "$DEVCORPUS.$L1-$L2" > "$DEVCORPUS.$L1" 
+cut -f 2 "$DEVCORPUS.$L1-$L2" > "$DEVCORPUS.$L2"
+
+cut -f 2 "$CORPUS_SRC_DEV/dev-set.$L2-$L1.tsv" >> "$DEVCORPUS.$L1" 
+cut -f 1 "$CORPUS_SRC_DEV/dev-set.$L2-$L1.tsv" >> "$DEVCORPUS.$L2" 
+
+# create a random test set
+cp /dev/null "$TESTCORPUS.$L1-$L2"
+cp /dev/null "$TESTCORPUS.$L1"
+cp /dev/null "$TESTCORPUS.$L2"
+
+paste /data/corpus.src/corpus-genesis-bbe.$L1 /data/corpus.src/corpus-genesis-bbe.$L2 | sort -u | shuf > "$WORKDIR/tmp1.$L1-$L2"
+sed -i '/^\s*$/d' "$WORKDIR/tmp1.$L1-$L2"
+head -n 50 "$WORKDIR/tmp1.$L1-$L2" > "$TESTCORPUS.$L1-$L2"
+rm "$WORKDIR/tmp1.$L1-$L2"
+
+cut -f 1 "$TESTCORPUS.$L1-$L2" > "$TESTCORPUS.$L1" 
+cut -f 2 "$TESTCORPUS.$L1-$L2" > "$TESTCORPUS.$L2"
 
 # pre-train sentencepiece
 
@@ -71,46 +99,22 @@ sed -i '/^\s*$/d' "$MONODIR/corpus-sentencepiece.$L2"
 
 $MARIAN/build/spm_train --input="$MONODIR/corpus-sentencepiece.$L2" \
     --model_prefix="/data/model.spm/vocab.$L2.spm" \
-    --vocab_size=4000 --character_coverage=1.0 --hard_vocab_limit=false
+    --vocab_size=2000 --character_coverage=1.0 --hard_vocab_limit=false
 
 cp /dev/null "$MONODIR/corpus-sentencepiece.$L1"
-
-function wgetIfNeeded {
-    if [ -f "$1" ]; then return; fi
-    wget -N -O /tmp/wget-temp.$$.txt "$2"
-    mv -v "/tmp/wget-temp.$$.txt" "$1"
-}
-
-
-#Additional monolinguage corpus for $L1 English
-wgetIfNeeded "$MONODIR/$L1/Frankenstien.$L1" 'https://www.gutenberg.org/files/84/84-0.txt'
-wgetIfNeeded "$MONODIR/$L1/Pride-and-Prejudice.$L1" 'https://www.gutenberg.org/files/1342/1342-0.txt'
-wgetIfNeeded "$MONODIR/$L1/Beowulf.$L1" 'https://www.gutenberg.org/ebooks/16328.txt.utf-8'
-wgetIfNeeded "$MONODIR/$L1/Edgar-Poe.$L1" 'https://www.gutenberg.org/ebooks/25525.txt.utf-8'
-wgetIfNeeded "$MONODIR/$L1/Moby-Dick.$L1" 'https://www.gutenberg.org/files/2701/2701-0.txt'
-wgetIfNeeded "$MONODIR/$L1/Dr-Jekyll.$L1" 'https://www.gutenberg.org/files/43/43-0.txt'
-wgetIfNeeded "$MONODIR/$L1/Sherlock-Holmes.$L1" 'https://www.gutenberg.org/files/1661/1661-0.txt'
-wgetIfNeeded "$MONODIR/$L1/Dracula.$L1" 'https://www.gutenberg.org/ebooks/345.txt.utf-8'
-wgetIfNeeded "$MONODIR/$L1/Grimms-Fairy-Tales.$L1" 'https://www.gutenberg.org/files/2591/2591-0.txt'
-wgetIfNeeded "$MONODIR/$L1/Jungle-Book.$L1" 'https://www.gutenberg.org/ebooks/35997.txt.utf-8'
-wgetIfNeeded "$MONODIR/$L1/Jungle-Book-2.$L1" 'https://www.gutenberg.org/ebooks/37364.txt.utf-8'
-
 for x in "$MONODIR/$L1/"*".$L1"; do
     cat "$x" >> "$MONODIR/corpus-sentencepiece.$L1"
 done
 
-sed -i '/^\s*$/d' "$MONODIR/corpus-sentencepiece.$L1"
-sed -i 's/\r$//g' "$MONODIR/corpus-sentencepiece.$L1"
-
 $MARIAN/build/spm_train --input="$MONODIR/corpus-sentencepiece.$L1" \
     --model_prefix="/data/model.spm/vocab.$L1.spm" \
-    --vocab_size=16000 --character_coverage=1.0 --hard_vocab_limit=false
+    --vocab_size=8000 --character_coverage=1.0 --hard_vocab_limit=false
 
 mv -v "/data/model.spm/vocab.$L1.spm.model" "/data/model.spm/vocab.$L1.spm"
 mv -v "/data/model.spm/vocab.$L2.spm.model" "/data/model.spm/vocab.$L2.spm"
 
 #copy in pretrained models for SPM
-cp -v /data/model.spm/vocab.*.spm "$MODELDIR/"
+cp -v /data/model.spm/* "$MODELDIR/"
 
 # create alignment helper to improve word associations between languages faster.
 # requires pretrained modles for SPM!
@@ -127,13 +131,13 @@ sed -i 's/\t/ ||| /g' $TEMPDIR/align.temp.$L1-$L2
 nice $MARIAN/build/marian \
     --mini-batch 16 \
     --maxi-batch 64 \
-    --cpu-threads 16 \
-    --after-epochs 1 \
+    --cpu-threads 2 \
+    --after-epochs 1 --allow-unk \
     --no-restore-corpus \
     -w 1024 \
     --type s2s \
     --model "$MODELDIR"/model.npz \
-    --dim-vocabs 4000 16000 \
+    --dim-vocabs 2000 8000 \
     --train-sets "$CORPUS.$L1" "$CORPUS.$L2" \
     --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
     --sentencepiece-options "--hard_vocab_limit=false --character_coverage=1.0" \
@@ -152,22 +156,41 @@ nice $MARIAN/build/marian \
     # --overwrite
 
 # some simple tests
-    (
-        echo "Hello."
-        echo "Hello?"
-        echo "Hello!"
-        echo "Hello again."
-        echo "Hello it's me again."
-        echo "A man and a woman are walking."
-        echo "The men and women are walking."
-        echo "The fox will be eating the chicken tomorrow."
-        echo "The fox will eat the chicken."
-        echo "The fox is eating the chicken."
-        echo "The fox ate the chicken."  
-        echo "The fox did eat the chicken."        
-        echo "The fox ate the chicken and thought it tasted good."
-        echo "The fox ate the chicken and thought it tasted very good."
-        echo "The fox ate the chicken and thought it tasted fantastic."
-    ) | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/test-simple.$L2".output
-    
+    echo "A man and a woman are walking." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 2 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/man-woman.$L2".output
+
+    echo "The men and women are walking." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 2 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/men-women.$L2".output
+
+    echo "The fox will be eating the chicken tomorrow." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 2 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-will-be-eating.$L2".output
+
+    echo "The fox will eat the chicken." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 2 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-will-eat.$L2".output
+
+    echo "The fox is eating the chicken." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 2 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-eating.$L2".output
+
+    echo "The fox ate the chicken." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 2 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-ate.$L2".output
+
+    echo "The fox did eat the chicken." \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 2 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/fox-chicken-did-eat.$L2".output      
+
+
+# translate dev set
+cat "$DEVCORPUS.$L1" \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 2 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$DEVCORPUS.$L2".output
+
+    # translate test set
+cat "$TESTCORPUS.$L1" \
+    | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 2 -b 6 -n0.6 \
+      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$TESTCORPUS.$L2".output

@@ -23,6 +23,7 @@ WORKDIR="/data/work.$L1-$L2"
 MODELDIR="/data/model.$L1-$L2"
 TEMPDIR="/data/temp.$L1-$L2"
 CORPUS_SRC="/data/corpus.src"
+CORPUS_SRC_DEV="/data/corpus.src.dev"
 CORPUS="$WORKDIR/corpus"
 DEVCORPUS="$WORKDIR/dev-corpus"
 TESTCORPUS="$WORKDIR/test-corpus"
@@ -42,29 +43,36 @@ for x in "$CORPUS_SRC/"*.$L1; do
     cat "$y" | sed '/^\s*$/d' >> "$CORPUS".$L2
 done
 
-# create a random dev set
+# create a dev set with data not in training corpus
 cp /dev/null "$DEVCORPUS.$L1-$L2"
 cp /dev/null "$DEVCORPUS.$L1"
 cp /dev/null "$DEVCORPUS.$L2"
 
-paste "$CORPUS_SRC"/corpus-nt-bbe.$L1 "$CORPUS_SRC"/corpus-nt-bbe.$L2 | sort -u | shuf > "$WORKDIR/tmp1.$L1-$L2"
-sed -i '/^\s*$/d' "$WORKDIR/tmp1.$L1-$L2"
-head -n 50 "$WORKDIR/tmp1.$L1-$L2" > "$DEVCORPUS.$L1-$L2"
-rm "$WORKDIR/tmp1.$L1-$L2"
+cut -f 2 "$CORPUS_SRC_DEV/dev-set.$L2-$L1.tsv" >> "$DEVCORPUS.$L1"
+cut -f 1 "$CORPUS_SRC_DEV/dev-set.$L2-$L1.tsv" >> "$DEVCORPUS.$L2"
 
-cut -f 1 "$DEVCORPUS.$L1-$L2" > "$DEVCORPUS.$L1" 
-cut -f 2 "$DEVCORPUS.$L1-$L2" > "$DEVCORPUS.$L2"
+tail -n +600 "$CORPUS_SRC_DEV/corpus-exodus.$L1-$L2.tsv" > /tmp/temp3.txt
 
-# create a random test set
+cut -f 1 /tmp/temp3.txt >> "$DEVCORPUS.$L1"
+cut -f 2 /tmp/temp3.txt >> "$DEVCORPUS.$L2"
+
+paste "$DEVCORPUS.$L1" "$DEVCORPUS.$L2" > "$DEVCORPUS.$L1-$L2"
+
+# create a test set with data not in training corpus
 cp /dev/null "$TESTCORPUS.$L1-$L2"
 cp /dev/null "$TESTCORPUS.$L1"
 cp /dev/null "$TESTCORPUS.$L2"
 
-paste /data/corpus.src/corpus-genesis-bbe.$L1 /data/corpus.src/corpus-genesis-bbe.$L2 | sort -u | shuf > "$WORKDIR/tmp1.$L1-$L2"
-sed -i '/^\s*$/d' "$WORKDIR/tmp1.$L1-$L2"
-head -n 50 "$WORKDIR/tmp1.$L1-$L2" > "$TESTCORPUS.$L1-$L2"
-rm "$WORKDIR/tmp1.$L1-$L2"
+cut -f 2 "$CORPUS_SRC_DEV/dev-set.$L2-$L1.tsv" >> "$TESTCORPUS.$L1"
+cut -f 1 "$CORPUS_SRC_DEV/dev-set.$L2-$L1.tsv" >> "$TESTCORPUS.$L2"
 
-cut -f 1 "$TESTCORPUS.$L1-$L2" > "$TESTCORPUS.$L1" 
-cut -f 2 "$TESTCORPUS.$L1-$L2" > "$TESTCORPUS.$L2"
+head -n 601 "$CORPUS_SRC_DEV/corpus-exodus.$L1-$L2.tsv" > /tmp/temp3.txt
 
+cut -f 1 /tmp/temp3.txt >> "$TESTCORPUS.$L1"
+cut -f 2 /tmp/temp3.txt >> "$TESTCORPUS.$L2"
+
+paste "$TESTCORPUS.$L1" "$TESTCORPUS.$L2" > "$TESTCORPUS.$L1-$L2"
+
+rm /tmp/temp.txt 2> /dev/null || true
+rm /tmp/temp2.txt 2> /dev/null || true
+rm /tmp/temp3.txt 2> /dev/null || true
