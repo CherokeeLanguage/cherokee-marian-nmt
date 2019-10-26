@@ -40,15 +40,6 @@ RUN apt-get install -y python-dev
 RUN apt-get install -y libbz2-dev
 RUN apt-get install -y wget
 
-RUN apt-get install -y libopenblas-dev
-
-RUN wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
-RUN apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
-RUN rm GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
-RUN wget https://apt.repos.intel.com/setup/intelproducts.list -O /etc/apt/sources.list.d/intelproducts.list
-RUN apt-get update
-RUN apt-get install -y intel-mkl-64bit-2019.5-075
-
 RUN add-apt-repository -y ppa:cwchien/gradle
 RUN apt-get update
 RUN apt-get install -y openjdk-8-jdk-headless
