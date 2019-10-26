@@ -54,7 +54,7 @@ for x in "$CORPUS_SRC/"*.$L1; do
 done
 
 #(re)generate corpus
-bash "$cwd/rebuild-corpus-en.sh"
+bash "$cwd/rebuild-corpus-$L1-$L2.sh"
 
 # pre-train sentencepiece
 
