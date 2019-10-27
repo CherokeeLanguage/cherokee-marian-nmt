@@ -45,6 +45,18 @@ RUN apt-get update
 RUN apt-get install -y openjdk-8-jdk-headless
 RUN apt-get install -y gradle
 
+#RUN apt-get install -y cuda
+
+#Newer version of cmake so that Marian-NMT can find CUDA during build.
+RUN apt-get update
+RUN apt-get install -y apt-transport-https ca-certificates gnupg software-properties-common wget
+RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | apt-key add -
+RUN sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main'
+RUN apt-get update
+RUN apt-get install -y kitware-archive-keyring
+RUN apt-key --keyring /etc/apt/trusted.gpg del C1F34CDD40CD72DA
+RUN apt-get dist-upgrade -y --autoremove --purge
+
 WORKDIR /git
 
 #Marian NMT
@@ -53,7 +65,7 @@ WORKDIR /git/marian
 RUN mkdir build
 WORKDIR /git/marian/build
 RUN cmake .. -DCOMPILE_CPU=off -DUSE_SENTENCEPIECE=on -DCOMPILE_CUDA=on -DBUILD_ARCH=native
-RUN make -j
+RUN make -j 4
 
 #
 #misc tools for use by marian-nmt
@@ -65,7 +77,7 @@ WORKDIR /git
 RUN git clone https://github.com/clab/fast_align.git
 WORKDIR /git/fast_align/build
 RUN cmake ..
-RUN make -j
+RUN make -j 4
 
 #moses-scripts:
 #RUN	git clone https://github.com/marian-nmt/moses-scripts

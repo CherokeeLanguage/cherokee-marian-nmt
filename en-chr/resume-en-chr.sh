@@ -40,6 +40,21 @@ cd "$WORKDIR"
 
 ALIGNEDCORPUS="$WORKDIR"/corpus.align.$L1-$L2
 
+# calculate max word counts
+function getMaxWordCount {
+    cat $CORPUS.$1 | /git/marian/build/spm_encode --model "$MODELDIR/vocab.$1.spm" | wc -w -l | while read words lines; do
+        echo "$(($lines / $words))"
+        return
+    done
+}
+
+l1Maxwords=$(getMaxWordCount $L1)
+l2Maxwords=$(getMaxWordCount $L2)
+maxwords=$((($l1Maxwords+$l2Maxwords+2)*16))
+
+echo "$L1: $l1Maxwords maxwords, $L2: $l2Maxwords maxwords"
+echo "Mini batch maxwords: $maxwords"
+
 #get previous epoch value
 eStart="$(grep 'after-epochs:' "$MODELDIR/model.npz.yml" | cut -f 2 -d ' ')"
 eStart=$(($eStart + 1))
@@ -53,12 +68,11 @@ for e in $(seq $eStart 1 10000); do
     sed -i "/^version.*$/d" "$MODELDIR/model.npz.yml"
     # train nmt model
 nice $MARIAN/build/marian \
-    --mini-batch 16 \
-    --maxi-batch 64 \
+    --mini-batch-words $maxwords \
     --cpu-threads 16 \
     --after-epochs $e \
     --no-restore-corpus \
-    -w 128 \
+    -w 1024 \
     --type s2s \
     --model "$MODELDIR"/model.npz \
     --dim-vocabs 4000 16000 \
@@ -67,8 +81,8 @@ nice $MARIAN/build/marian \
     --sentencepiece-options "--hard_vocab_limit=false --character_coverage=1.0" \
     --layer-normalization \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 10 --max-length 100 \
-    --valid-freq 10000 --save-freq 10000 --disp-freq 1 \
+    --early-stopping 10 --max-length 200 \
+    --valid-freq 5000 --save-freq 10000 --disp-freq 1 \
     --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
     --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
     --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \

@@ -58,6 +58,9 @@ bash "$cwd/rebuild-corpus-$L1-$L2.sh"
 
 # pre-train sentencepiece
 
+L1COUNT=16384
+L2COUNT=16384
+
 cd "$MODELDIR"
 rm "/data/model.spm/vocab.$L1.spm" 2> /dev/null || true
 rm "/data/model.spm/vocab.$L2.spm" 2> /dev/null || true
@@ -70,8 +73,9 @@ sed -i 's/---//g' "$MONODIR/corpus-sentencepiece.$L2"
 sed -i '/^\s*$/d' "$MONODIR/corpus-sentencepiece.$L2"
 
 $MARIAN/build/spm_train --input="$MONODIR/corpus-sentencepiece.$L2" \
+    --max_sentence_length 32768 \
     --model_prefix="/data/model.spm/vocab.$L2.spm" \
-    --vocab_size=4000 --character_coverage=1.0 --hard_vocab_limit=false
+    --vocab_size=$L2COUNT --character_coverage=1.0
 
 cp /dev/null "$MONODIR/corpus-sentencepiece.$L1"
 
@@ -81,8 +85,7 @@ function wgetIfNeeded {
     mv -v "/tmp/wget-temp.$$.txt" "$1"
 }
 
-
-#Additional monolinguage corpus for $L1 English
+#Additional monolingual corpus for $L1 English
 wgetIfNeeded "$MONODIR/$L1/Frankenstien.$L1" 'https://www.gutenberg.org/files/84/84-0.txt'
 wgetIfNeeded "$MONODIR/$L1/Pride-and-Prejudice.$L1" 'https://www.gutenberg.org/files/1342/1342-0.txt'
 wgetIfNeeded "$MONODIR/$L1/Beowulf.$L1" 'https://www.gutenberg.org/ebooks/16328.txt.utf-8'
@@ -103,14 +106,30 @@ sed -i '/^\s*$/d' "$MONODIR/corpus-sentencepiece.$L1"
 sed -i 's/\r$//g' "$MONODIR/corpus-sentencepiece.$L1"
 
 $MARIAN/build/spm_train --input="$MONODIR/corpus-sentencepiece.$L1" \
+    --max_sentence_length 32768 \
     --model_prefix="/data/model.spm/vocab.$L1.spm" \
-    --vocab_size=16000 --character_coverage=1.0 --hard_vocab_limit=false
+    --vocab_size=$L1COUNT --character_coverage=1.0
 
 mv -v "/data/model.spm/vocab.$L1.spm.model" "/data/model.spm/vocab.$L1.spm"
 mv -v "/data/model.spm/vocab.$L2.spm.model" "/data/model.spm/vocab.$L2.spm"
 
 #copy in pretrained models for SPM
 cp -v /data/model.spm/vocab.*.spm "$MODELDIR/"
+
+# calculate max word counts
+function getMaxWordCount {
+    cat $CORPUS.$1 | /git/marian/build/spm_encode --model "$MODELDIR/vocab.$1.spm" | wc -w -l | while read words lines; do
+        echo "$(($lines / $words))"
+        return
+    done
+}
+
+l1Maxwords=$(getMaxWordCount $L1)
+l2Maxwords=$(getMaxWordCount $L2)
+maxwords=$((($l1Maxwords+$l2Maxwords+2)*16))
+
+echo "$L1: $l1Maxwords maxwords, $L2: $l2Maxwords maxwords"
+echo "Mini batch maxwords: $maxwords"
 
 # create alignment helper to improve word associations between languages faster.
 # requires pretrained modles for SPM!
@@ -125,18 +144,17 @@ sed -i 's/\t/ ||| /g' $TEMPDIR/align.temp.$L1-$L2
 
 # train nmt model
 nice $MARIAN/build/marian \
-    --mini-batch 16 \
-    --maxi-batch 64 \
+    --mini-batch-words $maxwords \
     --cpu-threads 16 \
     --after-epochs 1 \
     --no-restore-corpus \
     -w 1024 \
     --type s2s \
     --model "$MODELDIR"/model.npz \
-    --dim-vocabs 4000 16000 \
+    --dim-vocabs $L1COUNT $L2COUNT \
     --train-sets "$CORPUS.$L1" "$CORPUS.$L2" \
     --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
-    --sentencepiece-options "--hard_vocab_limit=false --character_coverage=1.0" \
+    --sentencepiece-options "--character_coverage=1.0" \
     --layer-normalization \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
     --early-stopping 5 --max-length 100 \
