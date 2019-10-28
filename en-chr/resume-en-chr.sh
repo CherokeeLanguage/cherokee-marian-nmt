@@ -68,9 +68,9 @@ for e in $(seq $eStart 1 10000); do
     sed -i "/^version.*$/d" "$MODELDIR/model.npz.yml"
     # train nmt model
 nice $MARIAN/build/marian \
+    --after-epochs $e \
     --mini-batch-words $maxwords \
     --cpu-threads 16 \
-    --after-epochs $e \
     --no-restore-corpus \
     -w 1024 \
     --type s2s \
@@ -79,9 +79,9 @@ nice $MARIAN/build/marian \
     --train-sets "$CORPUS.$L1" "$CORPUS.$L2" \
     --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
     --sentencepiece-options "--hard_vocab_limit=false --character_coverage=1.0" \
-    --layer-normalization \
+    --layer-normalization --tied-embeddings-all \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 10 --max-length 200 \
+    --early-stopping 5 --max-length 1024 \
     --valid-freq 5000 --save-freq 10000 --disp-freq 1 \
     --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
     --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \

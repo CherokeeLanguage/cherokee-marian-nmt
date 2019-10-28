@@ -4,6 +4,7 @@ set -e
 set -o pipefail
 
 cd "$(dirname "$0")"
+cd ../en-chr
 
 CURRENT_UID="$(id -u):$(id -g)"
 

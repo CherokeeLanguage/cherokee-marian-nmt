@@ -65,6 +65,7 @@ cd "$MODELDIR"
 rm "/data/model.spm/vocab.$L1.spm" 2> /dev/null || true
 rm "/data/model.spm/vocab.$L2.spm" 2> /dev/null || true
 
+cp /dev/null "$MONODIR/corpus-sentencepiece.$L2"
 for x in "$MONODIR/$L2/"*".$L2"; do
     cat "$x" >> "$MONODIR/corpus-sentencepiece.$L2"
 done
@@ -76,8 +77,6 @@ $MARIAN/build/spm_train --input="$MONODIR/corpus-sentencepiece.$L2" \
     --max_sentence_length 32768 \
     --model_prefix="/data/model.spm/vocab.$L2.spm" \
     --vocab_size=$L2COUNT --character_coverage=1.0
-
-cp /dev/null "$MONODIR/corpus-sentencepiece.$L1"
 
 function wgetIfNeeded {
     if [ -f "$1" ]; then return; fi
@@ -98,6 +97,7 @@ wgetIfNeeded "$MONODIR/$L1/Grimms-Fairy-Tales.$L1" 'https://www.gutenberg.org/fi
 wgetIfNeeded "$MONODIR/$L1/Jungle-Book.$L1" 'https://www.gutenberg.org/ebooks/35997.txt.utf-8'
 wgetIfNeeded "$MONODIR/$L1/Jungle-Book-2.$L1" 'https://www.gutenberg.org/ebooks/37364.txt.utf-8'
 
+cp /dev/null "$MONODIR/corpus-sentencepiece.$L1"
 for x in "$MONODIR/$L1/"*".$L1"; do
     cat "$x" >> "$MONODIR/corpus-sentencepiece.$L1"
 done
@@ -144,21 +144,21 @@ sed -i 's/\t/ ||| /g' $TEMPDIR/align.temp.$L1-$L2
 
 # train nmt model
 nice $MARIAN/build/marian \
+    --after-epochs 1 \
     --mini-batch-words $maxwords \
     --cpu-threads 16 \
-    --after-epochs 1 \
     --no-restore-corpus \
     -w 1024 \
     --type s2s \
     --model "$MODELDIR"/model.npz \
-    --dim-vocabs $L1COUNT $L2COUNT \
+    --dim-vocabs 4000 16000 \
     --train-sets "$CORPUS.$L1" "$CORPUS.$L2" \
     --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
-    --sentencepiece-options "--character_coverage=1.0" \
-    --layer-normalization \
+    --sentencepiece-options "--hard_vocab_limit=false --character_coverage=1.0" \
+    --layer-normalization --tied-embeddings-all \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 5 --max-length 100 \
-    --valid-freq 1000 --save-freq 1000 --disp-freq 1 \
+    --early-stopping 10 --max-length 200 \
+    --valid-freq 5000 --save-freq 10000 --disp-freq 1 \
     --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
     --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
     --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
@@ -167,25 +167,4 @@ nice $MARIAN/build/marian \
     --normalize=0.6 --beam-size=6 --quiet-translation \
     --guided-alignment "$ALIGNEDCORPUS" \
     --valid-translation-output "$TEMPDIR/validation-translation-output.txt"
-    # --overwrite
 
-# some simple tests
-    (
-        echo "Hello."
-        echo "Hello?"
-        echo "Hello!"
-        echo "Hello again."
-        echo "Hello it's me again."
-        echo "A man and a woman are walking."
-        echo "The men and women are walking."
-        echo "The fox will be eating the chicken tomorrow."
-        echo "The fox will eat the chicken."
-        echo "The fox is eating the chicken."
-        echo "The fox ate the chicken."  
-        echo "The fox did eat the chicken."        
-        echo "The fox ate the chicken and thought it tasted good."
-        echo "The fox ate the chicken and thought it tasted very good."
-        echo "The fox ate the chicken and thought it tasted fantastic."
-    ) | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml --cpu-threads 16 -b 6 -n0.6 \
-      --mini-batch 16 --maxi-batch 64 --maxi-batch-sort src > "$WORKDIR/test-simple.$L2".output
-    
