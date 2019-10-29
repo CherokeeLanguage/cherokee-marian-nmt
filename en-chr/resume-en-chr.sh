@@ -17,6 +17,8 @@ then
     exit 1
 fi
 
+DOALIGN=0
+
 L1="en"
 L2="chr"
 
@@ -55,6 +57,13 @@ maxwords=$((($l1Maxwords+$l2Maxwords+2)*16))
 echo "$L1: $l1Maxwords maxwords, $L2: $l2Maxwords maxwords"
 echo "Mini batch maxwords: $maxwords"
 
+ALIGNEDCORPUS="$WORKDIR"/corpus.align.$L1-$L2
+if [ $DOALIGN != 0 ]; then    
+	ALIGN_ARGS="--guided-alignment \"$ALIGNEDCORPUS\""
+else
+	ALIGN_ARGS=""
+fi
+
 #get previous epoch value
 eStart="$(grep 'after-epochs:' "$MODELDIR/model.npz.yml" | cut -f 2 -d ' ')"
 eStart=$(($eStart + 1))
@@ -64,15 +73,15 @@ echo "Starting at epoch $eStart"
 #start at the previous "after-epoch value" for a quicker start up
 #then resuming from an interrupted training
 
-for e in $(seq $eStart 1 10000); do
+for e in $(seq $eStart 2 10000); do
     sed -i "/^version.*$/d" "$MODELDIR/model.npz.yml"
     # train nmt model
 nice $MARIAN/build/marian \
     --after-epochs $e \
-    --mini-batch-words $maxwords \
-    --cpu-threads 16 \
+    --mini-batch-fit \
+    --devices 0 \
     --no-restore-corpus \
-    -w 1024 \
+    -w 4096 \
     --type s2s \
     --model "$MODELDIR"/model.npz \
     --dim-vocabs 4000 16000 \
@@ -81,15 +90,15 @@ nice $MARIAN/build/marian \
     --sentencepiece-options "--hard_vocab_limit=false --character_coverage=1.0" \
     --layer-normalization --tied-embeddings-all \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 5 --max-length 1024 \
-    --valid-freq 5000 --save-freq 10000 --disp-freq 1 \
+    --early-stopping 5 --max-length 200 \
+    --valid-freq 5000 --save-freq 10000 --disp-freq 5 \
     --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
     --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
     --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
     --keep-best \
     --seed 1111 --exponential-smoothing \
     --normalize=0.6 --beam-size=6 --quiet-translation \
-    --guided-alignment "$ALIGNEDCORPUS" \
+    $ALIGN_ARGS \
     --valid-translation-output "$TEMPDIR/validation-translation-output.txt"
 
     # some simple tests
@@ -111,10 +120,10 @@ nice $MARIAN/build/marian \
         echo "The fox ate the chicken and thought it tasted fantastic."
     ) > /tmp/simple-test.en
     cat /tmp/simple-test.en | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml \
-        --cpu-threads 16 -b 6 -n0.6 > /tmp/simple-test.chr
+        --devices 0 -b 6 -n0.6 > /tmp/simple-test.chr
     paste /tmp/simple-test.en /tmp/simple-test.chr > "$WORKDIR/_test-simple.$L1-$L2".tsv
     cat "$TESTCORPUS.$L1" | $MARIAN/build/marian-decoder -c "$MODELDIR"/model.npz.decoder.yml \
-        --cpu-threads 16 -b 6 -n0.6 > /tmp/test-corpus-output.chr
+        --devices 0 -b 6 -n0.6 > /tmp/test-corpus-output.chr
     paste "$TESTCORPUS.$L1" /tmp/test-corpus-output.chr "$TESTCORPUS.$L2" > "$WORKDIR/_test-corpus-output.$L1-$L2-$L2".tsv
 done
 

@@ -16,6 +16,8 @@ then
     exit 1
 fi
 
+DOALIGN=0
+
 L1="en"
 L2="chr"
 
@@ -58,8 +60,8 @@ bash "$cwd/rebuild-corpus-$L1-$L2.sh"
 
 # pre-train sentencepiece
 
-L1COUNT=16384
-L2COUNT=16384
+L1COUNT=32768
+L2COUNT=32768
 
 cd "$MODELDIR"
 rm "/data/model.spm/vocab.$L1.spm" 2> /dev/null || true
@@ -133,38 +135,44 @@ echo "Mini batch maxwords: $maxwords"
 
 # create alignment helper to improve word associations between languages faster.
 # requires pretrained modles for SPM!
+if [ $DOALIGN != 0 ]; then
 ALIGNEDCORPUS="$WORKDIR"/corpus.align.$L1-$L2
-cat $CORPUS.$L1 | /git/marian/build/spm_encode --model "$MODELDIR/vocab.$L1.spm" > $TEMPDIR/align.temp.$L1
-cat $CORPUS.$L2 | /git/marian/build/spm_encode --model "$MODELDIR/vocab.$L2.spm" > $TEMPDIR/align.temp.$L2
-paste $TEMPDIR/align.temp.$L1 $TEMPDIR/align.temp.$L2 > $TEMPDIR/align.temp.$L1-$L2
-sed -i 's/\t/ ||| /g' $TEMPDIR/align.temp.$L1-$L2
-/git/fast_align/build/fast_align -vdo -i $TEMPDIR/align.temp.$L1-$L2 > $TEMPDIR/forward.align.$L1-$L2
-/git/fast_align/build/fast_align -vdor -i $TEMPDIR/align.temp.$L1-$L2 > $TEMPDIR/reverse.align.$L1-$L2
-/git/fast_align/build/atools -c grow-diag-final -i $TEMPDIR/forward.align.$L1-$L2 -j $TEMPDIR/reverse.align.$L1-$L2 > "$ALIGNEDCORPUS"
-
+	cat $CORPUS.$L1 | /git/marian/build/spm_encode --model "$MODELDIR/vocab.$L1.spm" > $TEMPDIR/align.temp.$L1
+	cat $CORPUS.$L2 | /git/marian/build/spm_encode --model "$MODELDIR/vocab.$L2.spm" > $TEMPDIR/align.temp.$L2
+	paste $TEMPDIR/align.temp.$L1 $TEMPDIR/align.temp.$L2 > $TEMPDIR/align.temp.$L1-$L2
+	sed -i 's/\t/ ||| /g' $TEMPDIR/align.temp.$L1-$L2
+	/git/fast_align/build/fast_align -vdo -i $TEMPDIR/align.temp.$L1-$L2 > $TEMPDIR/forward.align.$L1-$L2
+	/git/fast_align/build/fast_align -vdor -i $TEMPDIR/align.temp.$L1-$L2 > $TEMPDIR/reverse.align.$L1-$L2
+	/git/fast_align/build/atools -c grow-diag-final -i $TEMPDIR/forward.align.$L1-$L2 -j $TEMPDIR/reverse.align.$L1-$L2 > "$ALIGNEDCORPUS"
+	ALIGN_ARGS="--guided-alignment \"$ALIGNEDCORPUS\""
+else
+	ALIGN_ARGS=""
+fi
+    #--mini-batch-words $maxwords \
 # train nmt model
 nice $MARIAN/build/marian \
-    --after-epochs 1 \
-    --mini-batch-words $maxwords \
-    --cpu-threads 16 \
+    --after-epochs 10 \
+    --mini-batch-fit \
+    --devices 0 \
     --no-restore-corpus \
-    -w 1024 \
+    -w 4608 \
     --type s2s \
     --model "$MODELDIR"/model.npz \
-    --dim-vocabs 4000 16000 \
+    --dim-vocabs $L1COUNT $L2COUNT \
     --train-sets "$CORPUS.$L1" "$CORPUS.$L2" \
     --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
-    --sentencepiece-options "--hard_vocab_limit=false --character_coverage=1.0" \
+    --sentencepiece-options "--character_coverage=1.0" \
     --layer-normalization --tied-embeddings-all \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 10 --max-length 200 \
-    --valid-freq 5000 --save-freq 10000 --disp-freq 1 \
+    --early-stopping 5 --max-length 512 \
+    --valid-freq 5000 --save-freq 5000 --disp-freq 5 \
     --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
     --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
     --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
     --keep-best \
     --seed 1111 --exponential-smoothing \
     --normalize=0.6 --beam-size=6 --quiet-translation \
-    --guided-alignment "$ALIGNEDCORPUS" \
-    --valid-translation-output "$TEMPDIR/validation-translation-output.txt"
+    $ALIGN_ARGS \
+    --valid-translation-output "$TEMPDIR/validation-translation-output.txt" \
+    --lr-decay-strategy stalled --lr-decay-start 1 --lr-report --overwrite
 
