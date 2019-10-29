@@ -30,6 +30,8 @@ CORPUS="$WORKDIR/corpus"
 DEVCORPUS="$WORKDIR/dev-corpus"
 TESTCORPUS="$WORKDIR/test-corpus"
 MONODIR="/data/mono.src"
+L1COUNT=32768
+L2COUNT=32768
 
 if [ ! -d "$CORPUS_SRC" ]; then echo "MISSING $CORPUS_SRC"; exit -1; fi
 
@@ -59,9 +61,6 @@ done
 bash "$cwd/rebuild-corpus-$L1-$L2.sh"
 
 # pre-train sentencepiece
-
-L1COUNT=32768
-L2COUNT=32768
 
 cd "$MODELDIR"
 rm "/data/model.spm/vocab.$L1.spm" 2> /dev/null || true
@@ -165,7 +164,7 @@ nice $MARIAN/build/marian \
     --layer-normalization --tied-embeddings-all \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
     --early-stopping 5 --max-length 512 \
-    --valid-freq 5000 --save-freq 5000 --disp-freq 5 \
+    --valid-freq 1000 --save-freq 5000 --disp-freq 5 \
     --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
     --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
     --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
@@ -174,5 +173,6 @@ nice $MARIAN/build/marian \
     --normalize=0.6 --beam-size=6 --quiet-translation \
     $ALIGN_ARGS \
     --valid-translation-output "$TEMPDIR/validation-translation-output.txt" \
-    --lr-decay-strategy stalled --lr-decay-start 1 --lr-report --overwrite
+    --lr-report --overwrite
+#    --lr-decay-strategy stalled --lr-decay-start 1 --lr-report --overwrite
 
