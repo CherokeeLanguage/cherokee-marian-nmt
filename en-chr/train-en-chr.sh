@@ -155,7 +155,7 @@ nice $MARIAN/build/marian \
     --mini-batch-fit \
     --devices 0 \
     --no-restore-corpus \
-    -w 4608 \
+    -w 4096 \
     --type s2s \
     --model "$MODELDIR"/model.npz \
     --dim-vocabs $L1COUNT $L2COUNT \
