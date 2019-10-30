@@ -33,6 +33,10 @@ if [ ! -d "$CORPUS_SRC" ]; then echo "MISSING $CORPUS_SRC"; exit -1; fi
 
 cd "$WORKDIR"
 
+#the generated corpus is supplied as a tsv, split out for use corpus combiner
+cut -f 1 "$CORPUS_SRC/generated-corpus.$L2-$L1.tsv" > "$CORPUS_SRC/generated-corpus.$L2"
+cut -f 2 "$CORPUS_SRC/generated-corpus.$L2-$L1.tsv" > "$CORPUS_SRC/generated-corpus.$L1"
+
 cp /dev/null "$CORPUS".$L1
 cp /dev/null "$CORPUS".$L2
 

@@ -7,3 +7,4 @@ en-chr/temp.*/
 en-chr/model.*/
 en-chr/mono.src/minibatch-corpus-sentencepiece.*
 *.zip
+en-chr/corpus.src/generated-corpus.*

@@ -41,6 +41,7 @@ function reformatAsSentences {
     cat "$1" | dos2unix \
     | perl -0 -C -lpe 's/\n([^\n])/ $1/g' \
     | perl -0 -C -lpe 's/\n+\s*/\n/g' \
+    | perl -C -lpe 's/\0/\n/g' \
     | perl -C -lpe 's/ +/ /g' \
     | perl -C -lpe 's/([.?!;:])\s+/$1\n/g' \
     | perl -C -lpe 's/_//g'
@@ -206,8 +207,8 @@ nice $MARIAN/build/marian \
     --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
     --layer-normalization --tied-embeddings-all \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 5 --max-length 100 \
-    --valid-freq 500 --save-freq 500 --disp-freq 5 \
+    --early-stopping 1 --max-length 150 \
+    --valid-freq 100 --save-freq 100 --disp-freq 5 \
     --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
     --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
     --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
@@ -220,14 +221,14 @@ nice $MARIAN/build/marian \
 
 #generate synthetic corpus en->chr
 BOOKLIST="Frankenstien Pride-and-Prejudice Moby-Dick Dr-Jekyll Sherlock-Holmes Dracula Grimms-Fairy-Tales Jungle-Book Jungle-Book-2"
-BOOKLIST="Jungle-Book"
+#BOOKLIST="Jungle-Book"
 cp /dev/null "$SYNTHETICCORPUS".$L1-$L2.tsv
+cp /dev/null "$TEMPDIR/combined-books.$L1"
 for book in $BOOKLIST; do
-    reformatAsSentences "$MONODIR/$L1/${book}.$L1" > "$TEMPDIR/${book}.$L1"
-    translateEnToChr "$TEMPDIR/${book}.$L1" > "$TEMPDIR/${book}.$L2"
-    paste "$TEMPDIR/${book}.$L1" "$TEMPDIR/${book}.$L2" > "$TEMPDIR/${book}.$L1-$L2.tsv"
-    cat "$TEMPDIR/${book}.$L1-$L2.tsv" >> "$SYNTHETICCORPUS".$L1-$L2.tsv
+    reformatAsSentences "$MONODIR/$L1/${book}.$L1" >> "$TEMPDIR/combined-books.$L1"
 done
+translateEnToChr "$TEMPDIR/combined-books.$L1" > "$TEMPDIR/combined-books.$L2"
+paste "$TEMPDIR/combined-books.$L1" > "$TEMPDIR/combined-books.$L2" > "$SYNTHETICCORPUS".$L1-$L2.tsv
 
 #reset corpus
 cut -f 1 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L1
@@ -258,7 +259,7 @@ nice $MARIAN/build/marian \
     --vocabs "$MODELDIR"/vocab.$L2.spm "$MODELDIR"/vocab.$L1.spm \
     --layer-normalization --tied-embeddings-all \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 5 --max-length 100 \
+    --early-stopping 1 --max-length 150 \
     --valid-freq 500 --save-freq 500 --disp-freq 5 \
     --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
     --valid-sets "$DEVCORPUS.$L2" "$DEVCORPUS.$L1"  \
