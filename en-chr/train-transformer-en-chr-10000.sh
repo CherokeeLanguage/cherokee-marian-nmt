@@ -37,6 +37,8 @@ MONODIR="/data/mono.src"
 L1COUNT=8192
 L2COUNT=8192
 
+GPUS=0
+
 function reformatAsSentences {
     cat "$1" | dos2unix \
     | perl -0 -C -lpe 's/\n([^\n])/ $1/g' \
@@ -210,29 +212,42 @@ doAlign
 
 # train nmt model - forwards
 nice $MARIAN/build/marian \
-    --after-epochs $EPOCHS \
-    --mini-batch-fit \
-    --devices 0 \
-    --no-restore-corpus \
-    -w 4096 \
-    --type s2s \
     --model "$MODELDIR"/model-$L1-$L2.npz \
-    --dim-vocabs $L1COUNT $L2COUNT \
+    --type transformer \
     --train-sets "$CORPUS.$L1" "$CORPUS.$L2" \
+    --max-length 100 \
     --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
-    --layer-normalization --tied-embeddings-all \
-    --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 10 --max-length 100 \
-    --valid-freq 100 --save-freq 100 --disp-freq 5 \
-    --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
+    --mini-batch-fit \
+    -w 4096 \
+    --maxi-batch 1000 \
+    --early-stopping 10 \
+    --cost-type ce-mean-words \
+    --valid-freq 5000 --save-freq 5000 --disp-freq 10 \
+    --valid-metrics ce-mean-words perplexity bleu-detok \
     --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
-    --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
-    --keep-best \
-    --seed 1111 --exponential-smoothing \
-    --normalize=0.6 --beam-size=6 --quiet-translation \
-    $ALIGN_ARGS \
-    --valid-translation-output "$TEMPDIR/validation-translation-output.txt" \
-    --lr-decay-strategy stalled --lr-decay-start 1 --lr-report
+    --beam-size 6 \
+    --normalize 0.6 \
+    --log "$TEMPDIR"/train.log \
+    --valid-log "$TEMPDIR"/validation.log \
+    --enc-depth 6 \
+    --dec-depth 6 \
+    --transformer-heads 8 \
+    --transformer-postprocess-emb d \
+    --transformer-postprocess dan \
+    --transformer-dropout 0.1 \
+    --label-smoothing 0.1 \
+    --learn-rate 0.0003 \
+    --lr-warmup 16000 \
+    --lr-decay-inv-sqrt 16000 \
+    --lr-report \
+    --optimizer-params 0.9 0.98 1e-09 \
+    --clip-norm 5 \
+    --tied-embeddings-all \
+    --devices $GPUS \
+    --sync-sgd \
+    --seed 1111 \
+    --exponential-smoothing \
+    --overwrite --keep-best
 
 #generate synthetic corpus en->chr
 BOOKLIST="Frankenstien Pride-and-Prejudice Moby-Dick Dr-Jekyll Sherlock-Holmes Dracula Grimms-Fairy-Tales Jungle-Book Jungle-Book-2"
@@ -264,29 +279,42 @@ doAlign
 
 # train nmt model - backwards
 nice $MARIAN/build/marian \
-    --after-epochs $EPOCHS \
-    --mini-batch-fit \
-    --devices 0 \
-    --no-restore-corpus \
-    -w 4096 \
-    --type s2s \
     --model "$MODELDIR"/model-$L2-$L1.npz \
-    --dim-vocabs $L1COUNT $L2COUNT \
+    --type transformer \
     --train-sets "$CORPUS.$L2" "$CORPUS.$L1" \
+    --max-length 100 \
     --vocabs "$MODELDIR"/vocab.$L2.spm "$MODELDIR"/vocab.$L1.spm \
-    --layer-normalization --tied-embeddings-all \
-    --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 10 --max-length 100 \
-    --valid-freq 100 --save-freq 100 --disp-freq 5 \
-    --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
+    --mini-batch-fit \
+    -w 4096 \
+    --maxi-batch 1000 \
+    --early-stopping 10 \
+    --cost-type ce-mean-words \
+    --valid-freq 5000 --save-freq 5000 --disp-freq 10 \
+    --valid-metrics ce-mean-words perplexity bleu-detok \
     --valid-sets "$DEVCORPUS.$L2" "$DEVCORPUS.$L1"  \
-    --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
-    --keep-best \
-    --seed 1111 --exponential-smoothing \
-    --normalize=0.6 --beam-size=6 --quiet-translation \
-    $ALIGN_ARGS \
-    --valid-translation-output "$TEMPDIR/validation-translation-output.txt" \
-    --lr-decay-strategy stalled --lr-decay-start 1 --lr-report
+    --beam-size 6 \
+    --normalize 0.6 \
+    --log "$TEMPDIR"/train.log \
+    --valid-log "$TEMPDIR"/validation.log \
+    --enc-depth 6 \
+    --dec-depth 6 \
+    --transformer-heads 8 \
+    --transformer-postprocess-emb d \
+    --transformer-postprocess dan \
+    --transformer-dropout 0.1 \
+    --label-smoothing 0.1 \
+    --learn-rate 0.0003 \
+    --lr-warmup 16000 \
+    --lr-decay-inv-sqrt 16000 \
+    --lr-report \
+    --optimizer-params 0.9 0.98 1e-09 \
+    --clip-norm 5 \
+    --tied-embeddings-all \
+    --devices $GPUS \
+    --sync-sgd \
+    --seed 1111 \
+    --exponential-smoothing \
+    --overwrite --keep-best
 
 #generate synthetic corpus chr->en
 cut -f 2 "$SYNTHETICCORPUS".$L1-$L2.tsv > "$SYNTHETICCORPUS".$L2
