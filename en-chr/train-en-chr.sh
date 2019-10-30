@@ -27,11 +27,22 @@ TEMPDIR="/data/temp.$L1-$L2"
 CORPUS_SRC="/data/corpus.src"
 CORPUS_SRC_DEV="/data/corpus.src.dev"
 CORPUS="$WORKDIR/corpus"
+STARTINGCORPUS="$WORKDIR/starting-corpus"
+SYNTHETICCORPUS="$WORKDIR/synthetic-corpus"
 DEVCORPUS="$WORKDIR/dev-corpus"
 TESTCORPUS="$WORKDIR/test-corpus"
 MONODIR="/data/mono.src"
 L1COUNT=32768
 L2COUNT=32768
+
+function reformatAsSentences {
+    cat "$1" | dos2unix \
+    | perl -0 -C -lpe 's/\n([^\n])/ $1/g' \
+    | perl -0 -C -lpe 's/\n+\s*/\n/g' \
+    | perl -C -lpe 's/ +/ /g' \
+    | perl -C -lpe 's/([.?!;:])\s+/$1\n/g' \
+    | perl -C -lpe 's/_//g'
+}
 
 if [ ! -d "$CORPUS_SRC" ]; then echo "MISSING $CORPUS_SRC"; exit -1; fi
 
@@ -60,6 +71,9 @@ done
 #(re)generate corpus
 bash "$cwd/rebuild-corpus-$L1-$L2.sh"
 
+#save a copy for use as base corpus for reset during switch ups between backwards and forwards training steps
+paste "$CORPUS".$L1 "$CORPUS".$L2 > "$STARTINGCORPUS".$L1-$L2.tsv
+
 # pre-train sentencepiece
 
 cd "$MODELDIR"
@@ -68,10 +82,10 @@ rm "/data/model.spm/vocab.$L2.spm" 2> /dev/null || true
 
 cp /dev/null "$MONODIR/corpus-sentencepiece.$L2"
 for x in "$MONODIR/$L2/"*".$L2"; do
-    cat "$x" >> "$MONODIR/corpus-sentencepiece.$L2"
+    reformatAsSentences "$x" >> "$MONODIR/corpus-sentencepiece.$L2"
 done
 
-sed -i 's/---//g' "$MONODIR/corpus-sentencepiece.$L2"
+sed -i 's/---/ /g' "$MONODIR/corpus-sentencepiece.$L2"
 sed -i '/^\s*$/d' "$MONODIR/corpus-sentencepiece.$L2"
 
 $MARIAN/build/spm_train --input="$MONODIR/corpus-sentencepiece.$L2" \
@@ -88,8 +102,6 @@ function wgetIfNeeded {
 #Additional monolingual corpus for $L1 English
 wgetIfNeeded "$MONODIR/$L1/Frankenstien.$L1" 'https://www.gutenberg.org/files/84/84-0.txt'
 wgetIfNeeded "$MONODIR/$L1/Pride-and-Prejudice.$L1" 'https://www.gutenberg.org/files/1342/1342-0.txt'
-wgetIfNeeded "$MONODIR/$L1/Beowulf.$L1" 'https://www.gutenberg.org/ebooks/16328.txt.utf-8'
-wgetIfNeeded "$MONODIR/$L1/Edgar-Poe.$L1" 'https://www.gutenberg.org/ebooks/25525.txt.utf-8'
 wgetIfNeeded "$MONODIR/$L1/Moby-Dick.$L1" 'https://www.gutenberg.org/files/2701/2701-0.txt'
 wgetIfNeeded "$MONODIR/$L1/Dr-Jekyll.$L1" 'https://www.gutenberg.org/files/43/43-0.txt'
 wgetIfNeeded "$MONODIR/$L1/Sherlock-Holmes.$L1" 'https://www.gutenberg.org/files/1661/1661-0.txt'
@@ -100,7 +112,7 @@ wgetIfNeeded "$MONODIR/$L1/Jungle-Book-2.$L1" 'https://www.gutenberg.org/ebooks/
 
 cp /dev/null "$MONODIR/corpus-sentencepiece.$L1"
 for x in "$MONODIR/$L1/"*".$L1"; do
-    cat "$x" >> "$MONODIR/corpus-sentencepiece.$L1"
+    reformatAsSentences "$x" >> "$MONODIR/corpus-sentencepiece.$L1"
 done
 
 sed -i '/^\s*$/d' "$MONODIR/corpus-sentencepiece.$L1"
@@ -147,20 +159,49 @@ ALIGNEDCORPUS="$WORKDIR"/corpus.align.$L1-$L2
 else
 	ALIGN_ARGS=""
 fi
-    #--mini-batch-words $maxwords \
-# train nmt model
+
+function translateEnToChr {
+    cat "$1" | $MARIAN/build/marian-decoder -c "$MODELDIR"/model-$L1-$L2.npz.decoder.yml \
+        -w 4096 --devices 0 -b 6 -n0.6
+}
+
+function translateChrToEn {
+    cat "$1" | $MARIAN/build/marian-decoder -c "$MODELDIR"/model-$L2-$L1.npz.decoder.yml \
+        -w 4096 --devices 0 -b 6 -n0.6
+}
+
+
+for loops in $(seq 1 1 100); do
+
+echo "LOOP: $loops" >> "$TEMPDIR"/validation.log
+
+#corpus reset
+cut -f 1 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L1
+cut -f 2 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L2
+
+if [ -f "$SYNTHETICCORPUS".$L1-$L2.tsv ]; then
+    cut -f 1 "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS".$L1
+    cut -f 2 "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS".$L2
+fi
+
+#reset model if it exists
+rm "$MODELDIR"/model-$L1-$L2.npz 2> /dev/null || true
+rm "$MODELDIR"/model-$L1-$L2.npz.yml 2> /dev/null || true
+
+echo "$L1-$L2" >> "$TEMPDIR"/validation.log
+
+# train nmt model - forwards
 nice $MARIAN/build/marian \
-    --after-epochs 10 \
+    --after-epochs 1 \
     --mini-batch-fit \
     --devices 0 \
     --no-restore-corpus \
     -w 4096 \
     --type s2s \
-    --model "$MODELDIR"/model.npz \
+    --model "$MODELDIR"/model-$L1-$L2.npz \
     --dim-vocabs $L1COUNT $L2COUNT \
     --train-sets "$CORPUS.$L1" "$CORPUS.$L2" \
     --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
-    --sentencepiece-options "--character_coverage=1.0" \
     --layer-normalization --tied-embeddings-all \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
     --early-stopping 5 --max-length 512 \
@@ -173,6 +214,64 @@ nice $MARIAN/build/marian \
     --normalize=0.6 --beam-size=6 --quiet-translation \
     $ALIGN_ARGS \
     --valid-translation-output "$TEMPDIR/validation-translation-output.txt" \
-    --lr-report --overwrite
-#    --lr-decay-strategy stalled --lr-decay-start 1 --lr-report --overwrite
+    --lr-decay-strategy stalled --lr-decay-start 1 --lr-report
 
+#generate synthetic corpus en->chr
+cp /dev/null "$SYNTHETICCORPUS".$L1-$L2.tsv
+for book in Frankenstien Pride-and-Prejudice \
+            Moby-Dick Dr-Jekyll Sherlock-Holmes Dracula \
+            Grimms-Fairy-Tales Jungle-Book Jungle-Book-2; do
+    reformatAsSentences "$MONODIR/$L1/${book}.$L1" > "$TEMPDIR/${book}.$L1"
+    translateEnToChr "$TEMPDIR/${book}.$L1" > "$TEMPDIR/${book}.$L2"
+    paste "$TEMPDIR/${book}.$L1" "$TEMPDIR/${book}.$L2" > "$TEMPDIR/${book}.$L1-$L2.tsv"
+    cat "$TEMPDIR/${book}.$L1-$L2.tsv" >> "$SYNTHETICCORPUS".$L1-$L2.tsv
+done
+
+#reset corpus
+cut -f 1 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L1
+cut -f 2 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L2
+
+if [ -f "$SYNTHETICCORPUS".$L1-$L2.tsv ]; then
+    cut -f 1 "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS".$L1
+    cut -f 2 "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS".$L2
+fi
+
+#reset model if it exists
+rm "$MODELDIR"/model-$L2-$L1.npz 2> /dev/null || true
+rm "$MODELDIR"/model-$L2-$L1.npz.yml 2> /dev/null || true
+
+echo "$L2-$L1" >> "$TEMPDIR"/validation.log
+
+# train nmt model - backwards
+nice $MARIAN/build/marian \
+    --after-epochs 1 \
+    --mini-batch-fit \
+    --devices 0 \
+    --no-restore-corpus \
+    -w 4096 \
+    --type s2s \
+    --model "$MODELDIR"/model-$L2-$L1.npz \
+    --dim-vocabs $L1COUNT $L2COUNT \
+    --train-sets "$CORPUS.$L2" "$CORPUS.$L1" \
+    --vocabs "$MODELDIR"/vocab.$L2.spm "$MODELDIR"/vocab.$L1.spm \
+    --layer-normalization --tied-embeddings-all \
+    --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
+    --early-stopping 5 --max-length 512 \
+    --valid-freq 1000 --save-freq 5000 --disp-freq 5 \
+    --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
+    --valid-sets "$DEVCORPUS.$L2" "$DEVCORPUS.$L1"  \
+    --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
+    --keep-best \
+    --seed 1111 --exponential-smoothing \
+    --normalize=0.6 --beam-size=6 --quiet-translation \
+    $ALIGN_ARGS \
+    --valid-translation-output "$TEMPDIR/validation-translation-output.txt" \
+    --lr-decay-strategy stalled --lr-decay-start 1 --lr-report
+
+#generate synthetic corpus chr->en
+cut -f 2 "$SYNTHETICCORPUS".$L1-$L2.tsv > "$SYNTHETICCORPUS".$L2
+cp /dev/null "$SYNTHETICCORPUS".$L1-$L2.tsv
+translateChrToEn "$SYNTHETICCORPUS".$L2 > "$SYNTHETICCORPUS".$L1
+paste "$SYNTHETICCORPUS".$L1 "$SYNTHETICCORPUS".$L2 >> "$SYNTHETICCORPUS".$L1-$L2.tsv
+
+done
