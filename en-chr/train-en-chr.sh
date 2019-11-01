@@ -186,8 +186,27 @@ function translateChrToEn {
         -w 4096 --devices 0 -b 6 -n0.6
 }
 
+function corpusSplit {
+    rm -v $TEMPDIR/corpus-?? 2> /dev/null || true
+    split -n l/10 -e "$1" "$TEMPDIR/corpus-"
+    cp /dev/null "$TEMPDIR/train-corpus.$L1-$L2.tsv"
+    y=0
+    for z in aa ab ac ad ae af ag ah ai aj; do
+        if [ "$y" = "$2" ]; then
+            cp "$TEMPDIR/corpus-$z" "$DEVCORPUS.$L1-$L2.tsv"
+            cut -f 1 "$DEVCORPUS.$L1-$L2.tsv" > "$DEVCORPUS.$L1"
+            cut -f 2 "$DEVCORPUS.$L1-$L2.tsv" > "$DEVCORPUS.$L2"
+        else
+            cat "$TEMPDIR/corpus-$z" >> "$TEMPDIR/train-corpus.$L1-$L2.tsv"
+        fi 
+        y="$(($y + 1))"
+    done
+    cut -f 1 "$TEMPDIR/train-corpus.$L1-$L2.tsv" > "$CORPUS.$L1"
+    cut -f 2 "$TEMPDIR/train-corpus.$L1-$L2.tsv" > "$CORPUS.$L2"
+}
 
-for loops in $(seq 1 1 5); do
+
+for loops in $(seq 1 1 1); do
 
 echo "LOOP: $loops" >> "$TEMPDIR"/validation.log
 
@@ -206,33 +225,45 @@ rm "$MODELDIR"/model-$L1-$L2.npz.yml 2> /dev/null || true
 
 echo "$L1-$L2" >> "$TEMPDIR"/validation.log
 
-doAlign
+#split training up into 9 training sets and 1 training check set
 
-# train nmt model - forwards
-nice $MARIAN/build/marian \
-    --after-epochs $EPOCHS \
-    --mini-batch-fit \
-    --devices 0 \
-    --no-restore-corpus \
-    -w 4096 \
-    --type s2s \
-    --model "$MODELDIR"/model-$L1-$L2.npz \
-    --dim-vocabs $L1COUNT $L2COUNT \
-    --train-sets "$CORPUS.$L1" "$CORPUS.$L2" \
-    --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
-    --layer-normalization --tied-embeddings-all \
-    --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 10 --max-length 100 \
-    --valid-freq 100 --save-freq 100 --disp-freq 5 \
-    --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
-    --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
-    --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
-    --keep-best \
-    --seed 1111 --exponential-smoothing \
-    --normalize=0.6 --beam-size=6 --quiet-translation \
-    $ALIGN_ARGS \
-    --valid-translation-output "$TEMPDIR/validation-translation-output.txt" \
-    --lr-decay-strategy stalled --lr-decay-start 1 --lr-report
+shuf -o "$CORPUS.$L1-$L2.shuf.tsv" "$CORPUS.$L1-$L2".tsv
+
+for s in $(seq 1 1 10); do
+
+    echo "CHUNK: $s" >> "$TEMPDIR"/validation.log
+
+    corpusSplit "$CORPUS.$L1-$L2.shuf.tsv"
+
+    doAlign
+
+    # train nmt model - forwards
+    nice $MARIAN/build/marian \
+        --after-epochs $EPOCHS \
+        --mini-batch-fit \
+        --devices 0 \
+        --no-restore-corpus \
+        -w 4096 \
+        --type s2s \
+        --model "$MODELDIR"/model-$L1-$L2.npz \
+        --dim-vocabs $L1COUNT $L2COUNT \
+        --train-sets "$CORPUS.$L1" "$CORPUS.$L2" \
+        --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
+        --layer-normalization --tied-embeddings-all \
+        --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
+        --early-stopping 10 --max-length 100 \
+        --valid-freq 500 --save-freq 500 --disp-freq 10 \
+        --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
+        --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
+        --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
+        --keep-best \
+        --seed 1111 --exponential-smoothing \
+        --normalize=0.6 --beam-size=6 --quiet-translation \
+        $ALIGN_ARGS \
+        --valid-translation-output "$TEMPDIR/validation-translation-output.txt" \
+        --lr-decay-strategy stalled --lr-decay-start 1 --lr-report
+
+done 
 
 #generate synthetic corpus en->chr
 BOOKLIST="Frankenstien Pride-and-Prejudice Moby-Dick Dr-Jekyll Sherlock-Holmes Dracula Grimms-Fairy-Tales Jungle-Book Jungle-Book-2"

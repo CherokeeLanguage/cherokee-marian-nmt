@@ -33,7 +33,7 @@ if [ ! -d "$CORPUS_SRC" ]; then echo "MISSING $CORPUS_SRC"; exit -1; fi
 
 cd "$WORKDIR"
 
-#the generated corpus is supplied as a tsv, split out for use corpus combiner
+#the generated corpus is supplied as a tsv, split out for use in the corpus combiner
 cut -f 1 "$CORPUS_SRC/generated-corpus.$L2-$L1.tsv" > "$CORPUS_SRC/generated-corpus.$L2"
 cut -f 2 "$CORPUS_SRC/generated-corpus.$L2-$L1.tsv" > "$CORPUS_SRC/generated-corpus.$L1"
 
@@ -46,6 +46,18 @@ for x in "$CORPUS_SRC/"*.$L1; do
     cat "$x" | sed '/^\s*$/d' >> "$CORPUS".$L1
     cat "$y" | sed '/^\s*$/d' >> "$CORPUS".$L2
 done
+
+
+paste "$CORPUS".$L1 "$CORPUS".$L2 \
+    | cat -n \
+    | LC_ALL=C.UTF-8 sort -k2 -k1n \
+    | LC_ALL=C.UTF-8 uniq -f1 \
+    | LC_ALL=C.UTF-8 sort -nk1,1 \
+    | cut -f2- \
+    > "$CORPUS".$L1-$L2.tsv
+
+cut -f 1 "$CORPUS".$L1-$L2.tsv > "$CORPUS".$L1
+cut -f 2 "$CORPUS".$L1-$L2.tsv > "$CORPUS".$L2
 
 # create a dev set with data not in training corpus
 cp /dev/null "$DEVCORPUS.$L1-$L2"
