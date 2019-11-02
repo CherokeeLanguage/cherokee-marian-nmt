@@ -258,7 +258,7 @@ for book in $BOOKLIST; do
     reformatAsSentences "$MONODIR/$L1/${book}.$L1" >> "$TEMPDIR/combined-books.$L1"
 done
 translateEnToChr "$TEMPDIR/combined-books.$L1" > "$TEMPDIR/combined-books.$L2"
-paste "$TEMPDIR/combined-books.$L1" > "$TEMPDIR/combined-books.$L2" > "$SYNTHETICCORPUS".$L1-$L2.tsv
+paste "$TEMPDIR/combined-books.$L1" "$TEMPDIR/combined-books.$L2" > "$SYNTHETICCORPUS".$L1-$L2.tsv
 
 #reset corpus
 cut -f 1 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L1
