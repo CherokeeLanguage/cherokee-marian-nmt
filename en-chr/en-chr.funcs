@@ -62,11 +62,11 @@ function translateChrToEn {
 }
 
 function corpusSplit {
-    rm -v $TEMPDIR/corpus-?? 2> /dev/null || true
-    split -n l/10 -e "$1" "$TEMPDIR/corpus-"
+    rm $TEMPDIR/corpus-?? 2> /dev/null || true
+    split -n l/3 -e "$1" "$TEMPDIR/corpus-"
     cp /dev/null "$TEMPDIR/train-corpus.$L1-$L2.tsv"
     y=1
-    for z in aa ab ac ad ae af ag ah ai aj; do
+    for z in aa ab ac; do
         if [ "$y" = "$2" ]; then
             cp "$TEMPDIR/corpus-$z" "$DEVCORPUS.$L1-$L2.tsv"
             cut -f 1 "$DEVCORPUS.$L1-$L2.tsv" > "$DEVCORPUS.$L1"
@@ -80,3 +80,22 @@ function corpusSplit {
     cut -f 2 "$TEMPDIR/train-corpus.$L1-$L2.tsv" > "$CORPUS.$L2"
 }
 
+function corpusSplit2 {
+    rm $TEMPDIR/corpus-?? 2> /dev/null || true
+    split -n l/3 -e "$1" "$TEMPDIR/corpus-"
+    cp /dev/null "$TEMPDIR/train-corpus.$L1-$L2.tsv"
+    y=1
+    for z in aa ab ac; do
+        if [ "$y" = "$2" ]; then
+		echo "skipping $y [$z]"
+            #cp "$TEMPDIR/corpus-$z" "$DEVCORPUS.$L1-$L2.tsv"
+            #cut -f 1 "$DEVCORPUS.$L1-$L2.tsv" > "$DEVCORPUS.$L1"
+            #cut -f 2 "$DEVCORPUS.$L1-$L2.tsv" > "$DEVCORPUS.$L2"
+        else
+            cat "$TEMPDIR/corpus-$z" >> "$TEMPDIR/train-corpus.$L1-$L2.tsv"
+        fi 
+        y="$(($y + 1))"
+    done
+    cut -f 1 "$TEMPDIR/train-corpus.$L1-$L2.tsv" > "$CORPUS.$L1"
+    cut -f 2 "$TEMPDIR/train-corpus.$L1-$L2.tsv" > "$CORPUS.$L2"
+}

@@ -6,7 +6,7 @@ set -o pipefail
 cd "$(dirname "$0")"
 cwd="$(pwd)"
 
-EPOCHS=10000
+EPOCHS=100000
 
 . ./en-chr.vars
 . ./en-chr.funcs
@@ -109,36 +109,34 @@ for loops in $(seq 1 1 1); do
 
 echo "LOOP: $loops" >> "$TEMPDIR"/validation.log
 
-#corpus reset
-cut -f 1 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L1
-cut -f 2 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L2
-
-if [ -f "$SYNTHETICCORPUS".$L1-$L2.tsv ]; then
-    cut -f 1 "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS".$L1
-    cut -f 2 "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS".$L2
-fi
-
 #reset model if it exists
-rm "$MODELDIR"/model-$L1-$L2.npz 2> /dev/null || true
-rm "$MODELDIR"/model-$L1-$L2.npz.yml 2> /dev/null || true
+#rm "$MODELDIR"/model-$L1-$L2.npz 2> /dev/null || true
+#rm "$MODELDIR"/model-$L1-$L2.npz.yml 2> /dev/null || true
+
+#corpus reset
+cp "$STARTINGCORPUS".$L1-$L2.tsv "$CORPUS.$L1-$L2.tsv"
+if [ -f "$SYNTHETICCORPUS".$L1-$L2.tsv ]; then
+    cat "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS.$L1-$L2.tsv"
+fi
 
 echo "$L1-$L2" >> "$TEMPDIR"/validation.log
 
-#split training up into 9 training sets and 1 training check set
-
 shuf -o "$CORPUS.$L1-$L2.shuf.tsv" "$CORPUS.$L1-$L2".tsv
 
-for s in $(seq 1 1 10); do
+for s in $(seq 1 1 1); do
 
     echo "CHUNK: $s" >> "$TEMPDIR"/validation.log
+    
+    #split training up into 9 training sets and 1 dev set
+    #corpusSplit2 "$CORPUS.$L1-$L2.shuf.tsv" $s
 
-    corpusSplit "$CORPUS.$L1-$L2.shuf.tsv"
+    echo "SENTENCES: $(wc -l "$CORPUS.$L1")" >> "$TEMPDIR"/validation.log
 
     doAlign
 
     # reset stalled count before running next training cycle
     if [ -f "$MODELDIR/model-$L1-$L2.npz.progress.yml" ]; then
-        sed -i 's/^stalled: .*$/stalled: 0/g' "$MODELDIR/model-$L1-$L2.npz.progress.yml"
+        sed -i 's/stalled: .*$/stalled: 0/g' "$MODELDIR/model-$L1-$L2.npz.progress.yml"
     fi
 
     # train nmt model - forwards
@@ -155,8 +153,8 @@ for s in $(seq 1 1 10); do
         --vocabs "$MODELDIR"/vocab.$L1.spm "$MODELDIR"/vocab.$L2.spm \
         --layer-normalization --tied-embeddings-all \
         --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-        --early-stopping 10 --max-length 100 \
-        --valid-freq 500 --save-freq 500 --disp-freq 10 \
+        --early-stopping 5 --max-length 150 \
+        --valid-freq 1000 --save-freq 1000 --disp-freq 5 \
         --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
         --valid-sets "$DEVCORPUS.$L1" "$DEVCORPUS.$L2"  \
         --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \
@@ -179,26 +177,30 @@ done
 translateEnToChr "$TEMPDIR/combined-books.$L1" > "$TEMPDIR/combined-books.$L2"
 paste "$TEMPDIR/combined-books.$L1" "$TEMPDIR/combined-books.$L2" > "$SYNTHETICCORPUS".$L1-$L2.tsv
 
-#reset corpus
-cut -f 1 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L1
-cut -f 2 "$STARTINGCORPUS".$L1-$L2.tsv > "$CORPUS".$L2
+exit 0
 
+#corpus reset
+cp "$STARTINGCORPUS".$L1-$L2.tsv "$CORPUS.$L1-$L2.tsv"
 if [ -f "$SYNTHETICCORPUS".$L1-$L2.tsv ]; then
-    cut -f 1 "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS".$L1
-    cut -f 2 "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS".$L2
+    cat "$SYNTHETICCORPUS".$L1-$L2.tsv >> "$CORPUS.$L1-$L2.tsv"
 fi
 
+shuf -o "$CORPUS.$L1-$L2.shuf.tsv" "$CORPUS.$L1-$L2".tsv
+
 #reset model if it exists
-rm "$MODELDIR"/model-$L2-$L1.npz 2> /dev/null || true
-rm "$MODELDIR"/model-$L2-$L1.npz.yml 2> /dev/null || true
+#rm "$MODELDIR"/model-$L2-$L1.npz 2> /dev/null || true
+#rm "$MODELDIR"/model-$L2-$L1.npz.yml 2> /dev/null || true
 
 echo "$L2-$L1" >> "$TEMPDIR"/validation.log
+
+#split training up into training sets and dev sets
+#corpusSplit2 "$CORPUS.$L1-$L2.shuf.tsv" $s
 
 doAlign
 
 # reset stalled count before running next training cycle
 if [ -f "$MODELDIR/model-$L2-$L1.npz.progress.yml" ]; then
-    sed -i 's/^stalled: .*$/stalled: 0/g' "$MODELDIR/model-$L2-$L1.npz.progress.yml"
+    sed -i 's/stalled: .*$/stalled: 0/g' "$MODELDIR/model-$L2-$L1.npz.progress.yml"
 fi
 
 # train nmt model - backwards
@@ -215,8 +217,8 @@ nice $MARIAN/build/marian \
     --vocabs "$MODELDIR"/vocab.$L2.spm "$MODELDIR"/vocab.$L1.spm \
     --layer-normalization --tied-embeddings-all \
     --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
-    --early-stopping 10 --max-length 100 \
-    --valid-freq 100 --save-freq 100 --disp-freq 5 \
+    --early-stopping 5 --max-length 150 \
+    --valid-freq 10000 --save-freq 10000 --disp-freq 5 \
     --cost-type ce-mean-words --valid-metrics ce-mean-words bleu-detok \
     --valid-sets "$DEVCORPUS.$L2" "$DEVCORPUS.$L1"  \
     --log "$TEMPDIR"/train.log --valid-log "$TEMPDIR"/validation.log --tempdir "$TEMPDIR" \

@@ -79,15 +79,19 @@ WORKDIR /git/fast_align/build
 RUN cmake ..
 RUN make -j 4
 
-#needed by training corpus
+#needed for building corpus
 RUN apt-get -y install dos2unix
 
 #moses-scripts:
+#WORKDIR /git
 #RUN	git clone https://github.com/marian-nmt/moses-scripts
 #subword-nmt:
+#WORKDIR /git
 #RUN	git clone https://github.com/rsennrich/subword-nmt
+
 #sacreBLEU:
-#RUN	git clone https://github.com/marian-nmt/sacreBLEU -b master
+WORKDIR /git
+RUN	git clone https://github.com/marian-nmt/sacreBLEU -b master
 
 #ARG CherokeeLemmatizerVersion="20191011.00"
 #WORKDIR /git

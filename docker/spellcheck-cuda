@@ -1,0 +1,91 @@
+FROM tensorflow/tensorflow:latest-gpu-jupyter
+
+LABEL description="CUDA enabled neural network spell checker docker container for Ubuntu" author="Michael Conrad <muksihs@gmail.com>" maintainer="Michael Conrad <muksihs@gmail.com>"
+
+# Update Ubuntu.
+RUN apt-get update
+RUN apt-get install -y apt-utils debconf-utils
+RUN apt-get upgrade -y
+RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
+
+#set the locale otherwise weird issues later, especially with git and gradle
+RUN apt-get install -y language-pack-en language-pack-en-base
+RUN locale-gen en_US.UTF-8
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+#timezone to match mine to prevent confusion when reading log files
+RUN apt-get install -y tzdata
+RUN ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime
+RUN dpkg-reconfigure -f noninteractive tzdata
+
+RUN apt-get install -y software-properties-common
+
+# Install some necessary tools.
+RUN apt-get install -y sudo vim vifm
+RUN apt-get install -y perl
+
+# Install dependencies.
+RUN apt-get install -y build-essential pkg-config automake libtool cmake
+RUN apt-get install -y git
+RUN apt-get install -y libboost-all-dev
+RUN apt-get install -y libprotobuf\*
+RUN apt-get install -y protobuf-compiler
+RUN apt-get install -y libprotobuf-dev
+RUN apt-get install -y openssl libssl-dev
+RUN apt-get install -y libgoogle-perftools-dev
+RUN apt-get install -y zlib1g-dev
+RUN apt-get install -y python-dev
+RUN apt-get install -y libbz2-dev
+RUN apt-get install -y wget
+
+RUN add-apt-repository -y ppa:cwchien/gradle
+RUN apt-get update
+RUN apt-get install -y openjdk-8-jdk-headless
+RUN apt-get install -y gradle
+
+#RUN apt-get install -y cuda
+
+WORKDIR /git
+
+#needed for building corpus
+RUN apt-get -y install dos2unix
+
+#needed for keras based python apps
+RUN apt-get -y install python3-pycuda python3-keras keras-doc
+RUN apt-get -y install python3-h5py python3-graphviz python3-graphviz python3-pydot
+RUN apt-get -y install python3-pip python-pip
+
+RUN pip3 install tensorflow-gpu
+RUN pip install tensorflow-gpu
+
+RUN pip3 install keras
+RUN pip install keras
+
+#RUN pip3 install keras-eval
+#RUN pip install keras-eval
+
+#RUN pip3 install keras-text
+#RUN pip install keras-text
+
+#RUN pip3 install text-classification-keras 
+#RUN pip install text-classification-keras 
+
+#sacreBLEU:
+WORKDIR /git
+RUN	git clone https://github.com/marian-nmt/sacreBLEU -b master
+
+WORKDIR /git
+RUN git clone https://github.com/CherokeeLanguage/deep-spell-checkr.git -b master
+
+#work user
+RUN useradd -m -u 1000 -G sudo spell
+RUN usermod -a -G video spell
+RUN usermod --password $(openssl passwd -1 spell) spell
+RUN echo 'export LANG=en_US.UTF-8' >> /home/spell/.profile
+RUN echo 'export LC_ALL=en_US.UTF-8' >> /home/spell/.profile
+
+USER spell
+WORKDIR /home/spell
+CMD ["/bin/bash", "--login"]
